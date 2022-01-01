@@ -1,0 +1,16 @@
+/* Ref: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/code */
+pre {
+    background-color: #ddd;
+    display: block;
+    font-family: monospace;
+    white-space: pre;
+    overflow: auto;
+    border-radius: 5px;
+    padding: 5px;
+}
+code {
+    background-color: #ddd;
+    border-radius: 3px;
+    font-family: monospace;
+    padding: 0 3px;
+}

@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>GNU Bash Shell Programming Tips</title>
+    <link rel="stylesheet" href="simple.css">
+</head>
+<body>
+
+<h1>GNU Bash Shell Programming Tips</h1>
+
+<h2 id="Introduction">Introduction</h2>
+This page contains some tips for programming with the GNU Bash shell.
+<p>
+You can almost always find this shell on Linux here: <code>/bin/bash</code>
+<p>
+You can find an extensive example Bash shell script here:
+<br><a href="https://github.com/kevinarpe/home/blob/master/sh/get-openjdk.bash">https://github.com/kevinarpe/home/blob/master/sh/get-openjdk.bash</a>
+
+<h2>Minimalist Template</h2>
+This is a very simple template to get you started with safer Bash shell programming.
+<pre><code>#!/usr/bin/env bash
+
+# Exit immediately if a command exits with a non-zero status.
+set -e
+# Treat unset variables as an error when substituting.
+set -u
+# The return value of a pipeline is the status of
+# the last command to exit with a non-zero status,
+# or zero if no command exited with a non-zero status
+set -o pipefail
+# Print commands and their arguments as they are executed.
+# set -x
+
+main()
+{
+    # Command line arguments stored in "$@"
+
+    local arg1="$1" ; shift
+    local arg2="$1" ; shift
+    # ...
+
+    echo_and_run_cmd \
+        ls -l "$(/usr/bin/env bash)"
+
+    echo_cmd \
+        ls -l /bin/bash '|' awk '{ print $2 }'
+
+    ls -l /bin/bash | awk '{ print $2 }'
+}
+
+echo_cmd()
+{
+    echo
+    echo '$' "$@"
+}
+
+echo_and_run_cmd()
+{
+    echo_cmd "$@"
+    "$@"
+}
+
+main "$@"
+</code></pre>
+
+<h2 id="Finding_the_Bash_Shell">Finding the Bash Shell</h2>
+The first line <code>#!/usr/bin/env bash</code> finds <code>bash</code> in your path, then executes it.
+<p>
+This is more portable than <code>/bin/bash</code>.
+
+<h2>Settings for a Safer Bash Shell Script</h2>
+By default, Bash will not exit the shell script when a command fails.
+<br>It is a good idea to override this default setting:
+<pre><code>set -e</code></pre>
+If you need to run a command and allow non-zero exit status, try this:
+<pre><code>set +e
+command arg1 arg2 ...
+local exit_status=$?
+set -e
+# Use $exit_status here
+</code></pre>
+
+By default, during variable substitution, e.g., <code>"abc${my_var}def"</code>, Bash will treat undeclared variables as the empty string.  As a result, it is easy to miss a typo!
+<p>
+For example, in the string <code>"abc${my_var}def"</code>, if variable <code>my_var</code> is undeclared, Bash will generate the final string as: <code>abcdef</code>.
+<br>It is a good idea to override this default setting to force Bash shell to exit immediately with non-zero status:
+<pre><code>set -u</code></pre>
+
+By default, in a shell pipeline, e.g., <code>ls -l /path/to/dir | grep ...</code>, Bash will ignore all exit statuses except for the last.  If a command fails in the middle of a pipeline, this exit status is silently lost/ignored.
+<br>It is a good idea to override this default setting:
+<pre><code>set -o pipefail</code></pre>
+
+<h2>Echo and Run Command</h2>
+One of the first problems you will notice with Bash shell programming: When something goes wrong, what command was running?
+<p>
+One solution: Echo (print) each command to STDOUT before it is run.  To help, two tiny functions are included in the bare bones template above: <code>echo_cmd()</code> and <code>echo_and_run_cmd()</code>.
+
+<h3>Function <code>echo_cmd()</code></h3>
+When this function is called with a command and its arguments:
+<ol>
+    <li>A new line is printed to neatly separate the output of each command.</li>
+    <li>A dollar sign (<code>$</code>) is printed to simulate a traditional minimalist UNIX shell prompt.</li>
+    <li>Each argument is printed separated by a space.</li>
+</ol>
+<code>echo_cmd ls -l /bin/bash</code> would print this text:
+<pre><code>
+$ ls -l /bin/bash
+</code></pre>
+Gotcha: When calling <code>echo_cmd()</code>, be careful if your command has special characters that must be quoted, e.g., <code>&lt;</code>, <code>&gt;</code>, or <code>|</code>.
+<br>For example: <code>ls -l /bin/bash | awk '{ print $2 }'</code> needs to have its pipe (<code>|</code>) quoted as <code>'|'</code>.
+
+<h3>Function <code>echo_and_run_cmd()</code></h3>
+This function is a simple, logical extension of function <code>echo_cmd()</code>.  First, echo (print), then run the command.
+<p>
+Since we are using <code>set -e</code> by default, if the command fails, the script will terminate immediately with the non-zero exit status.  However, if <code>set -e</code> is temporarily disabled with <code>set +e</code>, the function will return the exit status of the command.  For example, if <code>grep</code> fails to match anything, the result will be non-zero exit status.
+<p>
+<code>echo_and_run_cmd ls -l /bin/bash</code> would print this text:
+<pre><code>
+$ ls -l /bin/bash
+-rwxr-xr-x 1 root root 1230360 Dec 15 07:43 /bin/bash
+</code></pre>
+
+<h2>Capturing Output and Exit Status from Commands</h2>
+Generally speaking, there are three things you might want to capture from a command: STDOUT, STDERR, and exit status.
+<p>
+Remember: By default, we will always use <code>set -e</code>.  Thus, we assume exit status is always zero.
+
+To capture STDOUT from a command, try this:
+<pre><code>local stdout
+stdout="$(ls -l)"
+</pre></code>
+
+Why not <code>local stdout="$(ls -l)"</code>?
+<br>Combining the local variable declaration with a subshell command will always succeed and subshell exit status is lost.
+<p>
+To capture STDOUT and STDERR from a command, try this:
+<pre><code>local output
+output="$(ls -l 2&gt;&amp;1)"
+</pre></code>
+
+Notice that we are redirecting STDERR into STDOUT: <code>2&gt;&amp;1</code>
+<p>
+To capture STDOUT and STDERR separately, it is recommended to use a temporary file.
+<br>While there are solutions to avoid a temp file, they are impossible to read and maintain for average users.
+<p>
+Try this:
+<pre><code># Ex: '/tmp/tmp.ygotp44CPM'
+local temp_file_path="$(mktemp)"
+local stdout
+stdout="$(ls -l 2&gt; "$temp_file_path")"
+local stderr
+stderr="$(cat "$temp_file_path")"
+rm --force "$temp_file_path"
+</pre></code>
+
+If you are unsure if a command will exit successfully, capture the exit status, then use it.
+<pre><code>local stdout
+set +e
+stdout="$(ls -l)"
+local exit_status=$?
+set -e
+# Use $exit_status here
+if [ 0 != $exit_status ]
+then
+    ...
+fi
+</pre></code>
+
+Alternatively, you can use <code>if/then/else</code>:
+<pre><code>local stdout
+if stdout="$(ls -l)"
+then
+    local exit_status=0
+else
+    local exit_status=$?
+fi
+</pre></code>
+
+To <u>only</u> capture the exit status, try this:
+<pre><code>if echo_and_run_cmd ls -l
+then
+    local exit_status=0
+else
+    local exit_status=$?
+fi
+</pre></code>
+
+The main problem with capturing output using subshells is that output is not automatically displayed.
+<br>Worse, if the subshell command is hung, like <code>curl</code> or <code>wget</code>, you might have no idea why.
+<br>As an alternative to a subshell, try using <code>tee</code> and a temp file.
+<pre><code># Ex: '/tmp/tmp.ygotp44CPM'
+local temp_file_path="$(mktemp)"
+curl ... | tee "$temp_file_path"
+local stdout
+stdout="$(cat "$temp_file_path")"
+rm --force "$temp_file_path"
+</pre></code>
+
+<h2>Final Advice</h2>
+When possible, always run commands with <code>echo_and_run_cmd()</code>.
+<br>If not possible due to a pipe (<code>|</code>) or redirect (<code>&lt;</code>, <code>&gt;</code>, etc.), try <code>echo_cmd()</code> with pipes or redirect symbols quoted, then run the command.
+<br>Example:
+<pre><code>echo_cmd ls -l /bin/bash '|' awk '{ print $2 }'
+ls -l /bin/bash | awk '{ print $2 }'
+</pre></code>
+Or, capture STDOUT, then immediately print:
+<pre><code>echo_cmd ls -l /bin/bash '|' awk '{ print $2 }'
+local stdout
+stdout="$(ls -l /bin/bash | awk '{ print $2 }')"
+printf -- '%s\n' "$stdout"
+</pre></code>
+
+<h2>Checking Command Line Arguments</h2>
+In general, it is easy to handle simple command line arguments, and difficult to handle complex command line arguments.
+<br>One simple way to check command line arguments is the number of them.
+<br>If the number of command line arguments is incorrect, you can also provide a simple man page to explain the arguments.
+<p>
+Here is a sample:
+<pre><code>main()
+{
+    check_args "$@"
+
+    # Ex: "$HOME/saveme"
+    local install_parent_dir_path="$1" ; shift
+
+    # Ex: '8' or '11' or '17'
+    local jdk_version="$1" ; shift
+
+    ...
+}
+
+check_args()
+{
+    if [ 2 != $# ]
+    then
+        printf -- 'ERROR: Missing required arguments or too many arguments\n'
+        printf -- '\n'
+        printf -- 'Usage: %s INSTALL_PARENT_DIR JDK_VERSION\n' "$0"
+        printf -- 'From https://adoptium.net/, find latest JDK minor version, download, untar, and update symlink, e.g., jdk-8\n'
+        printf -- '\n'
+        printf -- 'Required Arguments:\n'
+        printf -- '    INSTALL_PARENT_DIR: parent path for installation\n'
+        printf -- '        Example: $HOME/dev or $HOME/saveme\n'
+        printf -- '\n'
+        printf -- '    JDK_VERSION: whole/major JDK version number\n'
+        printf -- '        Example: 8 or 11 or 17\n'
+        printf -- '\n'
+        exit 1
+    fi
+}
+</pre></code>
+
+<h2>Printing: <code>printf</code> vs <code>echo</code></h2>
+In short, <code>echo</code> is much less powerful and less portable than <code>printf</code>.
+<p>
+In many samples you will notice this form: <code>printf -- FORMAT ARGS...</code>
+<br>The special argument <code>--</code> serves to protect us from a <code>FORMAT</code> that might look like an option for <code>printf</code>.
+
+<hr>
+<!-- Ref: https://creativecommons.org/choose/ -->
+<a rel="license" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-nc-sa/4.0/88x31.png" /></a><br />This work is licensed under a <a rel="license" href="http://creativecommons.org/licenses/by-nc-sa/4.0/">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License</a>.
+</body>
+</html>
